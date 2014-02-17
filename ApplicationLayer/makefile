@@ -17,11 +17,11 @@ client : client.o
 server : server.o
 	$(CC) server.o -o server
 
-client.o : src/include/CS450Header.h src/client.cpp
-	$(CC) $(CFLAGS) src/client.cpp
+client.o : CS450Header.h client.cpp
+	$(CC) $(CFLAGS) client.cpp
 
-server.o : src/include/CS450Header.h src/server.cpp
-	$(CC) $(CFLAGS) src/server.cpp
+server.o : CS450Header.h server.cpp
+	$(CC) $(CFLAGS) server.cpp
 
 
 clean:
