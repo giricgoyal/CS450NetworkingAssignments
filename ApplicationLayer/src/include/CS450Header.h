@@ -5,6 +5,8 @@
     
 */
 
+#ifndef CS450HEADER_H
+#define CS450HEADER_H
 // ALL NUMBERS LARGER THAN ONE BYTE SHOULD BE STORED IN NETWORK ORDER
 
 typedef struct{
@@ -34,3 +36,5 @@ typedef struct{
     
     
 } CS450Header;
+
+#endif

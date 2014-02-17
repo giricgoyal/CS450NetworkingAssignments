@@ -44,9 +44,16 @@ int main(int argc, char *argv[])
     CS450Header *s_header = (CS450Header *)malloc(sizeof(CS450Header));
 
     char *s_dataAddr = NULL;
+    char *s_tempAddr = NULL;
+
+    socklen_t socklen;
+
     int s_fd;
     
     char myAddress[ 100 ];
+
+    long int s_tempAddress;
+    long int s_tempPort;
 
     std::cout<<"\nAuthor\t:\tGiric Goyal\nID\t:\tggoyal2\nUIN\t:\t657440995\n\n";
 
@@ -95,7 +102,7 @@ int main(int argc, char *argv[])
         return 0;
     }
     else {
-        std::cout<<"Socket bound to port number : "<<s_portNumber<<" @ : "<<myAddress<<endl;
+        std::cout<<"Socket bound to port number : "<<s_portNumber<<" @ "<<myAddress<<endl;
     }
 
     //  Call LISTEN to set the socket to listening for new connection requests.
@@ -108,84 +115,173 @@ int main(int argc, char *argv[])
     // Call ACCEPT to accept a new incoming connection request.
     // The result will be a new socket, which will be used for all further
     // communications with this client.
-    socklen_t socklen;
-    std::cout<<"Waiting for connection."<<endl;
-    if ((s_acceptSocket = accept(s_tcpSocket, (sockaddr *)&s_clientAddr, &socklen)) < 0) {
-        perror("Failed to accept incoming connection.");
-    }
-    else {
-        std::cout<<"Connected to client."<<endl;
-    }
-
-    // Call RECV to read in one CS450Header struct
-    if (recv(s_acceptSocket, s_header, sizeof(CS450Header), 0) < 0) {
-        perror("Error receiving message.");
-    }
-    else {
-        std::cout<<"Header received."<<endl;
-    }
-
-    // Then call RECV again to read in the bytes of the incoming file.
-    //      If "saveFile" is non-zero, save the file to disk under the name
-    //      "filename".  Otherwise just read in the bytes and discard them.
-    //      If the total # of bytes exceeds a limit, multiple RECVs are needed.
-    s_dataAddr = (char *)malloc(ntohl(s_header->nbytes));
-    if (recv(s_acceptSocket, s_dataAddr, ntohl(s_header->nbytes), 0) < 0) {
-        perror("Error receiving message.");
-    }
-    else {
-        std::cout<<"File received."<<endl;
-    }
-
-     if (ntohs(s_header->saveFile) != 0) {
-        s_fd = creat(s_header->filename, S_IRWXU);
-        if (s_fd < 0) {
-            perror("Error creating file.");
+    
+    do {
+        std::cout<<"Waiting for connection.\n"<<endl;
+        if ((s_acceptSocket = accept(s_tcpSocket, (sockaddr *)&s_clientAddr, &socklen)) < 0) {
+            perror("Failed to accept incoming connection.");
         }
         else {
-            if (write(s_fd, s_dataAddr, ntohl(s_header->nbytes)) < 0) {
-                perror("Error writing file.");
+            std::cout<<"Connected to client."<<endl;
+        }
+
+        // Call RECV to read in one CS450Header struct
+        if (recv(s_acceptSocket, s_header, sizeof(CS450Header), 0) < 0) {
+            perror("Error receiving message.");
+        }
+        else {
+            std::cout<<"Header received."<<endl;
+        }
+
+        // Then call RECV again to read in the bytes of the incoming file.
+        //      If "saveFile" is non-zero, save the file to disk under the name
+        //      "filename".  Otherwise just read in the bytes and discard them.
+        //      If the total # of bytes exceeds a limit, multiple RECVs are needed.
+        
+        if (s_dataAddr == NULL) {
+            s_dataAddr = (char *)malloc(ntohl(s_header->nbytes));    
+        }
+        else {
+            free(s_dataAddr);
+            s_dataAddr = (char *)malloc(ntohl(s_header->nbytes));
+        }
+        if (s_tempAddr == NULL) {
+            s_tempAddr = (char *)malloc(65536);    
+        }
+        else  {
+            free(s_tempAddr);
+            s_tempAddr = (char *)malloc(65536);
+        }
+        
+        long int s_size = 0;
+        long int s_tSize = 0;
+        long int s_totalSize  = ntohl(s_header->nbytes);
+        
+        while (true) {
+            if (s_totalSize - s_size >= 65536) {
+                s_tSize = 65536;
             }
             else {
-                std::cout<<"File Saved."<<endl;
+                s_tSize = s_totalSize - s_size;
+                free(s_tempAddr);
+                s_tempAddr = (char*)malloc(s_tSize);
+            }
+            if (recv(s_acceptSocket, s_tempAddr, s_tSize, MSG_WAITALL) < 0) {
+                perror("Error getting file.");
+            }
+            else {
+                //std::cout<<s_tSize<< " : "<<s_size<<" : "<<s_totalSize<<endl;
+                strcat(s_dataAddr, s_tempAddr);
+                s_size = s_size + s_tSize;
+            }
+
+            if (s_size == s_totalSize) {
+                break;
             }
         }
-    }
+        /*
+        int s_bytesRead = 1;
+        int s_counter = 0;
+        while (s_bytesRead > 0) {
+            if (s_totalSize - s_size >= 65536) {
+                s_tSize = 65536;
+            }
+            else {
+                s_tSize = s_totalSize - s_size;
+                free(s_tempAddr);
+                s_tempAddr = (char*)malloc(s_tSize);
+            }
+            if ((s_bytesRead = recv(s_acceptSocket, s_tempAddr, s_tSize, 0)) < 0) {
+                perror("Error getting file.");
+            }
+            else {
+                cout<<s_bytesRead<<" : " <<++s_counter<<endl;
+                //std::cout<<s_tSize<< " : "<<s_size<<" : "<<s_totalSize<<endl;
+                strcat(s_dataAddr, s_tempAddr);
+                s_size = s_size + s_tSize;
+            }
 
-    // Send back an acknowledgement to the client, indicating the number of 
-    // bytes received.  Other information may also be included.
-
-    struct stat s_st;
-    if (stat(s_dataAddr, &s_st) <0) {
-        perror ("Error getting file stats.");
-    }
-    cout<<endl<<s_st.st_size<<endl;
-
-    s_header->from_IP = 0;
-    s_header->to_IP = 0;
-    s_header->packetType = htonl(2);
-    s_header->nbytes = htonl(strlen(s_dataAddr));
-    s_header->relayCommand = htonl(1);
-    s_header->persistent = htonl(0);
-    s_header->saveFile = htonl(0);
-
-    // send the header
-    if (send(s_acceptSocket, s_header, sizeof(CS450Header), 0) < 0) {
-        perror("Error sending acknowledgement header.");
-    }
-    else {
-        std::cout<<"Acknowledgement sent."<<endl;
-    }
-
-    // If "persistent" is zero, then include a close command in the header
-    // for the acknowledgement and close the socket.  Go back to ACCEPT to 
-    // handle additional requests.  Otherwise keep the connection open and
-    // read in another Header for another incoming file from this client.
+            if (s_bytesRead == 0) {
+                break;
+            }
+        }
+        */
     
+        /*
+        if (recv(s_acceptSocket, s_dataAddr, ntohl(s_header->nbytes), 0) < 0) {
+            perror("Error receiving message.");
+        }
+        else {
+            std::cout<<"File received."<<endl;
+        }
+        */
+
+        if (ntohl(s_header->saveFile) != 0) {
+            s_fd = creat("testnew.txt"/*s_header->filename*/, S_IRWXU);
+            if (s_fd < 0) {
+                perror("Error creating file.");
+            }
+            else {
+                if (write(s_fd, s_dataAddr, ntohl(s_header->nbytes)) < 0) {
+                    perror("Error writing file.");
+                }
+                else {
+                    std::cout<<"File Saved."<<endl;
+                    close(s_fd);
+                }
+            }
+        }
+
+        // Send back an acknowledgement to the client, indicating the number of 
+        // bytes received.  Other information may also be included.
+
+        s_tempAddress = s_header->from_IP;
+        s_header->from_IP = s_header->to_IP;
+        s_header->to_IP = s_tempAddress;
+
+        //s_header->from_IP = s_serverAddr.sin_addr.s_addr;
+        //s_header->to_IP = s_clientAddr.sin_addr.s_addr;
+        
+        s_header->packetType = htonl(2);
+        s_header->nbytes = htonl(s_size);
+        s_header->relayCommand = (ntohl(s_header->persistent) == 0)? htonl(1) : htonl(0);
+        s_header->persistent = htonl(0);
+        s_header->saveFile = htonl(0);
+
+        s_tempAddress = s_header->trueFromIP;
+        s_header->trueFromIP = s_header->trueToIP;
+        s_header->trueToIP = s_tempAddress;
+
+        //s_header->trueFromIP = s_serverAddr.sin_addr.s_addr;
+        //s_header->trueToIP = s_clientAddr.sin_addr.s_addr;
+
+        s_tempPort = s_header->from_Port;
+        s_header->from_Port = s_header->to_Port;
+        s_header->to_Port = s_tempPort;
+        //s_header->from_Port = htons(s_portNumber);
+        //s_header->to_Port = htons(s_portNumber);
+
+
+        // send the header
+        if (send(s_acceptSocket, s_header, sizeof(CS450Header), 0) < 0) {
+            perror("Error sending acknowledgement header.");
+        }
+        else {
+            std::cout<<"Acknowledgement sent."<<endl;
+        }
+
+        // If "persistent" is zero, then include a close command in the header
+        // for the acknowledgement and close the socket.  Go back to ACCEPT to 
+        // handle additional requests.  Otherwise keep the connection open and
+        // read in another Header for another incoming file from this client.
+        
+    }while(ntohl(s_header->relayCommand) == 0);
+
     shutdown(s_tcpSocket, SHUT_RDWR);
     //free(s_hp);
     free(s_header);
     free(s_dataAddr);
+    free(s_tempAddr);
     //system("PAUSE");
     return EXIT_SUCCESS;
 }
